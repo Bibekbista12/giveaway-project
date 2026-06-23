@@ -58,7 +58,7 @@
         ctx.moveTo(0, 0);
         ctx.arc(0, 0, radius, start, end);
         ctx.closePath();
-        ctx.fillStyle = colors[i % colors.length];
+        ctx.fillStyle = prize.is_prize ? colors[i % colors.length] : "#999999";
         ctx.fill();
 
         ctx.save();
@@ -95,7 +95,9 @@
       const winningIndex = prizes.findIndex(p => p.id === data.prize_id);
       const targetSegmentCenter = winningIndex * segAngle + segAngle / 2;
       const extraSpins = 5 * 2 * Math.PI;
-      const finalRotation = extraSpins + (2 * Math.PI - targetSegmentCenter);
+      // -PI/2 corrects for the pointer being at the TOP (12 o'clock),
+      // while canvas angle 0 is at the RIGHT (3 o'clock).
+      const finalRotation = extraSpins + (2 * Math.PI - targetSegmentCenter) - (Math.PI / 2);
 
       const duration = 4000;
       const startTime = performance.now();
@@ -111,10 +113,14 @@
           requestAnimationFrame(animate);
         } else {
           currentRotation = rotation % (2 * Math.PI);
-          document.getElementById("result").textContent = "You won: " + data.prize;
-          setTimeout(() => {
-            window.location.href = "/register/" + data.spin_session_id + "/";
-          }, 1500);
+          if (data.is_prize) {
+            document.getElementById("result").textContent = "You won: " + data.prize;
+            setTimeout(() => {
+              window.location.href = "/register/" + data.spin_session_id + "/";
+            }, 1500);
+          } else {
+            document.getElementById("result").textContent = "Better luck next time!";
+          }
         }
       }
       requestAnimationFrame(animate);

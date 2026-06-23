@@ -4,10 +4,12 @@ from django.views import View
 from django.db import transaction
 from django.shortcuts import render, redirect, get_object_or_404
 from django.core.exceptions import ValidationError
-from .models import Prize, SpinSession, Document
+from django.core.mail import send_mail
+from django.conf import settings
+from .models import Prize, SpinSession, Document, Participant
 from .forms import ParticipantForm
 from .services import (
-    can_spin, pick_weighted_prize, create_spin_session,
+    can_spin, pick_weighted_outcome, create_spin_session,
     is_duplicate_participant, validate_uploaded_file,
 )
 
@@ -15,12 +17,12 @@ from .services import (
 class SpinView(View):
     def get(self, request):
         already_spun = not can_spin(request)
-        prizes = list(
-            Prize.objects.filter(is_active=True, remaining_quantity__gt=0).values("id", "name")
+        entries = list(
+            Prize.objects.filter(is_active=True).values("id", "name", "is_prize")
         )
         return render(request, "spin.html", {
             "already_spun": already_spun,
-            "prizes_json": json.dumps(prizes),
+            "prizes_json": json.dumps(entries),
         })
 
     def post(self, request):
@@ -28,17 +30,20 @@ class SpinView(View):
             return JsonResponse({"error": "already_participated"}, status=403)
 
         with transaction.atomic():
-            prize = pick_weighted_prize()
-            if prize is None:
+            outcome = pick_weighted_outcome()
+            if outcome is None:
                 return JsonResponse({"error": "no_prizes_left"}, status=409)
 
-            prize.remaining_quantity -= 1
-            prize.save()
-            session, cookie_id = create_spin_session(request, prize)
+            if outcome.is_prize:
+                outcome.remaining_quantity -= 1
+                outcome.save()
+
+            session, cookie_id = create_spin_session(request, outcome)
 
         response = JsonResponse({
-            "prize_id": prize.id,
-            "prize": prize.name,
+            "prize_id": outcome.id,
+            "prize": outcome.name,
+            "is_prize": outcome.is_prize,
             "spin_session_id": str(session.id),
         })
         response.set_cookie(
@@ -90,9 +95,30 @@ class RegisterView(View):
                 )
                 session.status = "completed"
                 session.save()
+
+            send_verification_email(participant)
             return redirect("registration_success")
 
         return render(request, "register.html", {"form": form, "prize": session.prize})
+
+
+def send_verification_email(participant):
+    verify_url = f"{settings.SITE_BASE_URL}/verify-email/{participant.email_verification_token}/"
+    send_mail(
+        subject="Confirm your email — Giveaway Campaign",
+        message=f"Hi {participant.full_name},\n\nPlease confirm your email by clicking this link:\n{verify_url}\n\nIf you didn't request this, ignore this email.",
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[participant.email],
+    )
+
+
+class VerifyEmailView(View):
+    def get(self, request, token):
+        participant = get_object_or_404(Participant, email_verification_token=token)
+        if not participant.email_verified:
+            participant.email_verified = True
+            participant.save()
+        return render(request, "email_verified.html", {"participant": participant})
 
 
 def registration_success(request):

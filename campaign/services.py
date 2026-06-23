@@ -1,5 +1,7 @@
 import uuid
+import random
 from datetime import timedelta
+from django.core.exceptions import ValidationError
 from django.db import transaction, models
 from django.utils import timezone
 from .models import Prize, SpinSession, Participant
@@ -13,10 +15,6 @@ def get_client_ip(request):
 
 
 def can_spin(request):
-    """
-    Checkpoint 1: anonymous dedup, before any identity exists.
-    Blocks repeat spins via cookie, device fingerprint, or IP within 24h.
-    """
     cookie_id = request.COOKIES.get("giveaway_uid")
     fingerprint = request.POST.get("device_fingerprint", "") or request.GET.get("device_fingerprint", "")
     ip = get_client_ip(request)
@@ -32,54 +30,51 @@ def can_spin(request):
 
 
 def is_duplicate_participant(mobile_number, email):
-    """
-    Checkpoint 2: real-identity dedup, at form submission.
-    """
     return Participant.objects.filter(
         models.Q(mobile_number=mobile_number) | models.Q(email=email)
     ).exists()
 
 
-def pick_weighted_prize():
+def pick_weighted_outcome():
     """
-    Randomly selects an available prize, weighted by `weight`.
-    Must be called inside a transaction.atomic() block by the caller,
-    since it locks rows to prevent overselling.
+    Picks an outcome (real prize OR a 'better luck next time' entry),
+    weighted by `weight`. Only real prizes (is_prize=True) need
+    remaining_quantity > 0; loss entries (is_prize=False) are unlimited.
+    Must be called inside transaction.atomic() since it locks rows.
     """
-    import random
+    real_prizes = models.Q(is_prize=True, remaining_quantity__gt=0)
+    loss_entries = models.Q(is_prize=False)
 
-    prizes = list(
-        Prize.objects.select_for_update().filter(is_active=True, remaining_quantity__gt=0)
+    entries = list(
+        Prize.objects.select_for_update().filter(
+            models.Q(is_active=True) & (real_prizes | loss_entries)
+        )
     )
-    if not prizes:
+    if not entries:
         return None
 
-    total_weight = sum(p.weight for p in prizes)
+    total_weight = sum(e.weight for e in entries)
     pick = random.uniform(0, total_weight)
     cumulative = 0
-    for prize in prizes:
-        cumulative += prize.weight
+    for entry in entries:
+        cumulative += entry.weight
         if pick <= cumulative:
-            return prize
-    return prizes[-1]  # fallback, shouldn't normally hit this
+            return entry
+    return entries[-1]
 
 
-def create_spin_session(request, prize):
-    """
-    Call inside the same transaction as pick_weighted_prize() + the
-    remaining_quantity decrement.
-    """
+def create_spin_session(request, outcome):
     cookie_id = request.COOKIES.get("giveaway_uid") or str(uuid.uuid4())
+    status = "pending_form" if outcome.is_prize else "completed"
     return SpinSession.objects.create(
-        prize=prize,
+        prize=outcome,
         session_cookie_id=cookie_id,
         device_fingerprint=request.POST.get("device_fingerprint", ""),
         ip_address=get_client_ip(request),
+        status=status,
         expires_at=timezone.now() + timedelta(minutes=30),
     ), cookie_id
 
-
-from django.core.exceptions import ValidationError
 
 ALLOWED_DOC_EXTENSIONS = ["pdf", "jpg", "jpeg", "png"]
 MAX_DOC_SIZE_MB = 5
