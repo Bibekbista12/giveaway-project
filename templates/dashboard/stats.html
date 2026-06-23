@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Giveaway dashboard</title>
+  <style>
+    body { font-family: sans-serif; background: #f4f1ea; padding: 30px; }
+    .cards { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 30px; }
+    .card { background: #fff; padding: 20px; border-radius: 10px; min-width: 160px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .card .num { font-size: 28px; font-weight: bold; }
+    .card .label { font-size: 13px; color: #666; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; }
+    th, td { padding: 10px 14px; border-bottom: 1px solid #eee; text-align: left; font-size: 14px; }
+    th { background: #f0eee6; }
+    a.export-btn { display: inline-block; margin-bottom: 20px; padding: 10px 18px; background: #1d9e75; color: #fff; border-radius: 6px; text-decoration: none; }
+    h2 { margin-top: 40px; }
+  </style>
+</head>
+<body>
+  <h1>Giveaway dashboard</h1>
+
+  <div class="cards">
+    <div class="card"><div class="num">{{ total_participants }}</div><div class="label">Total participants</div></div>
+    <div class="card"><div class="num">{{ total_spins }}</div><div class="label">Total spins</div></div>
+    <div class="card"><div class="num">{{ total_verified }}</div><div class="label">Verified</div></div>
+    <div class="card"><div class="num">{{ total_unverified }}</div><div class="label">Unverified / pending</div></div>
+  </div>
+
+  <a class="export-btn" href="{% url 'dashboard_export' %}">Export all participants (CSV)</a>
+
+  <h2>Prize distribution</h2>
+  <table>
+    <tr><th>Prize</th><th>Times won</th></tr>
+    {% for row in prize_distribution %}
+      <tr><td>{{ row.prize__name }}</td><td>{{ row.count }}</td></tr>
+    {% endfor %}
+  </table>
+
+  <h2>Winners (verified)</h2>
+  <table>
+    <tr><th>Name</th><th>Email</th><th>Prize</th><th>Submitted</th></tr>
+    {% for w in winners %}
+      <tr>
+        <td>{{ w.full_name }}</td>
+        <td>{{ w.email }}</td>
+        <td>{{ w.spin_session.prize.name }}</td>
+        <td>{{ w.created_at }}</td>
+      </tr>
+    {% endfor %}
+  </table>
+</body>
+</html>

@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Spin the wheel</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; background: #f4f1ea; padding: 40px; }
+    #wheel-wrap { position: relative; width: 420px; margin: 0 auto; }
+    #pointer {
+      position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+      width: 0; height: 0; border-left: 18px solid transparent;
+      border-right: 18px solid transparent; border-top: 30px solid #d85a30;
+      z-index: 10;
+    }
+    canvas { border-radius: 50%; box-shadow: 0 0 0 6px #fff, 0 0 0 8px #ccc; }
+    button {
+      margin-top: 30px; padding: 14px 32px; font-size: 18px; border: none;
+      border-radius: 8px; background: #d85a30; color: white; cursor: pointer;
+    }
+    button:disabled { background: #aaa; cursor: not-allowed; }
+    #result { margin-top: 20px; font-size: 20px; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+<h1>Spin to win!</h1>
+{% csrf_token %}
+
+{% if already_spun %}
+  <p>You've already participated. Thanks for joining!</p>
+{% else %}
+  <div id="wheel-wrap">
+    <div id="pointer"></div>
+    <canvas id="wheel" width="420" height="420"></canvas>
+  </div>
+  <button id="spin-btn">Spin the wheel</button>
+  <p id="result"></p>
+
+  <script>
+    const prizes = {{ prizes_json|safe }};
+    const canvas = document.getElementById("wheel");
+    const ctx = canvas.getContext("2d");
+    const center = 210;
+    const radius = 200;
+    const colors = ["#d85a30", "#1d9e75", "#7f77dd", "#d4537e", "#ef9f27", "#378ade", "#639922"];
+    const segAngle = (2 * Math.PI) / prizes.length;
+    let currentRotation = 0;
+
+    function drawWheel(rotation) {
+      ctx.clearRect(0, 0, 420, 420);
+      ctx.save();
+      ctx.translate(center, center);
+      ctx.rotate(rotation);
+      prizes.forEach((prize, i) => {
+        const start = i * segAngle;
+        const end = start + segAngle;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.arc(0, 0, radius, start, end);
+        ctx.closePath();
+        ctx.fillStyle = colors[i % colors.length];
+        ctx.fill();
+
+        ctx.save();
+        ctx.rotate(start + segAngle / 2);
+        ctx.textAlign = "right";
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 14px sans-serif";
+        ctx.fillText(prize.name, radius - 15, 5);
+        ctx.restore();
+      });
+      ctx.restore();
+    }
+
+    drawWheel(0);
+
+    document.getElementById("spin-btn").addEventListener("click", async function () {
+      const btn = this;
+      btn.disabled = true;
+      document.getElementById("result").textContent = "Spinning...";
+
+      const res = await fetch("/spin/", {
+        method: "POST",
+        headers: { "X-CSRFToken": getCookie("csrftoken") },
+        body: new URLSearchParams({ device_fingerprint: getDeviceFingerprint() }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        document.getElementById("result").textContent =
+          data.error === "already_participated" ? "You've already participated." : "Sorry, no prizes left.";
+        return;
+      }
+
+      const winningIndex = prizes.findIndex(p => p.id === data.prize_id);
+      const targetSegmentCenter = winningIndex * segAngle + segAngle / 2;
+      const extraSpins = 5 * 2 * Math.PI;
+      const finalRotation = extraSpins + (2 * Math.PI - targetSegmentCenter);
+
+      const duration = 4000;
+      const startTime = performance.now();
+      const startRotation = currentRotation;
+
+      function animate(now) {
+        const elapsed = now - startTime;
+        const t = Math.min(elapsed / duration, 1);
+        const eased = 1 - Math.pow(1 - t, 3);
+        const rotation = startRotation + finalRotation * eased;
+        drawWheel(rotation);
+        if (t < 1) {
+          requestAnimationFrame(animate);
+        } else {
+          currentRotation = rotation % (2 * Math.PI);
+          document.getElementById("result").textContent = "You won: " + data.prize;
+          setTimeout(() => {
+            window.location.href = "/register/" + data.spin_session_id + "/";
+          }, 1500);
+        }
+      }
+      requestAnimationFrame(animate);
+    });
+
+    function getCookie(name) {
+      const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+      return match ? match[2] : "";
+    }
+
+    function getDeviceFingerprint() {
+      let id = localStorage.getItem("giveaway_device_id");
+      if (!id) {
+        id = crypto.randomUUID();
+        localStorage.setItem("giveaway_device_id", id);
+      }
+      return id;
+    }
+  </script>
+{% endif %}
+
+</body>
+</html>
