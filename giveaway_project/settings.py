@@ -25,8 +25,8 @@ SECRET_KEY = 'django-insecure-)ab)pn0mjl&jj2-p#db4l$p+3sv16_4s5k@s3vyq7cogrhcd^e
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
-
+ALLOWED_HOSTS = [".vercel.app", "localhost", "127.0.0.1"]
+CSRF_TRUSTED_ORIGINS = ["https://*.vercel.app"]
 
 # Application definition
 
@@ -36,9 +36,12 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
+    'cloudinary_storage',
     'django.contrib.staticfiles',
+    'cloudinary',
     'campaign',
     'dashboard',
+
 ]
 
 MIDDLEWARE = [
@@ -123,3 +126,15 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CSRF_COOKIE_HTTPONLY = False
+
+
+import os
+
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME'),
+    'API_KEY': os.environ.get('CLOUDINARY_API_KEY'),
+    'API_SECRET': os.environ.get('CLOUDINARY_API_SECRET'),
+}
+DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+
+
