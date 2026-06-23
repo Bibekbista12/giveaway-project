@@ -20,6 +20,8 @@ class Prize(models.Model):
         default=1, help_text="Relative odds of being selected on the wheel"
     )
     is_active = models.BooleanField(default=True)
+    is_prize = models.BooleanField(default=True, help_text="Uncheck for 'better luck next time' segments")
+
     image = models.ImageField(upload_to="prizes/", blank=True, null=True)
 
     def is_available(self):
